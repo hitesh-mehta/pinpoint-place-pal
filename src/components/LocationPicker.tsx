@@ -17,6 +17,11 @@ interface Coordinates {
   lng: number;
 }
 
+// Create a custom error interface for Mapbox errors
+interface MapboxError extends Error {
+  status?: number;
+}
+
 const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearToken }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -42,7 +47,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearTok
 
       map.current.on('error', (e) => {
         console.error("Mapbox error:", e);
-        if (e.error && e.error.status === 401) {
+        // Type assertion to treat e.error as MapboxError
+        if (e.error && (e.error as MapboxError).status === 401) {
           setTokenError(true);
           toast({
             title: "Invalid Token",
