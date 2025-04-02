@@ -1,15 +1,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MapPin, Copy, Locate, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface LocationPickerProps {
-  mapboxToken: string;
-  onClearToken: () => void;
+  googleMapsApiKey: string;
+  onClearKey: () => void;
 }
 
 interface Coordinates {
@@ -17,120 +15,108 @@ interface Coordinates {
   lng: number;
 }
 
-// Create a custom error interface for Mapbox errors
-interface MapboxError extends Error {
-  status?: number;
-}
-
-const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearToken }) => {
+const LocationPicker: React.FC<LocationPickerProps> = ({ googleMapsApiKey, onClearKey }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const marker = useRef<mapboxgl.Marker | null>(null);
+  const map = useRef<google.maps.Map | null>(null);
+  const marker = useRef<google.maps.Marker | null>(null);
   const [coordinates, setCoordinates] = useState<Coordinates>({ lat: 0, lng: 0 });
   const [loading, setLoading] = useState<boolean>(true);
-  const [tokenError, setTokenError] = useState<boolean>(false);
+  const [apiError, setApiError] = useState<boolean>(false);
   const { toast } = useToast();
-
-  // Initialize map when component mounts
+  
+  // Initialize Google Maps
   useEffect(() => {
     if (!mapContainer.current) return;
-
-    try {
-      mapboxgl.accessToken = mapboxToken;
-      
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: [coordinates.lng, coordinates.lat],
-        zoom: 2
-      });
-
-      map.current.on('error', (e) => {
-        console.error("Mapbox error:", e);
-        // Type assertion to treat e.error as MapboxError
-        if (e.error && (e.error as MapboxError).status === 401) {
-          setTokenError(true);
-          toast({
-            title: "Invalid Token",
-            description: "The Mapbox token is invalid or has expired",
-            variant: "destructive"
-          });
-        }
-      });
-
-      // Add navigation controls
-      map.current.addControl(
-        new mapboxgl.NavigationControl(), 'top-right'
-      );
-
-      // Create a draggable marker
-      marker.current = new mapboxgl.Marker({
-        draggable: true,
-        color: '#3b82f6'
-      })
-        .setLngLat([coordinates.lng, coordinates.lat])
-        .addTo(map.current);
-
-      // Update coordinates when marker is dragged
-      marker.current.on('dragend', () => {
-        if (marker.current) {
-          const lngLat = marker.current.getLngLat();
-          setCoordinates({ lat: lngLat.lat, lng: lngLat.lng });
-        }
-      });
-
-      // Update marker position when clicking on map
-      map.current.on('click', (e) => {
-        if (marker.current) {
-          marker.current.setLngLat([e.lngLat.lng, e.lngLat.lat]);
-          setCoordinates({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-        }
-      });
-
-      // Get user's current location
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          if (map.current && marker.current) {
-            map.current.flyTo({
-              center: [longitude, latitude],
-              zoom: 14,
-              essential: true
-            });
-            marker.current.setLngLat([longitude, latitude]);
-            setCoordinates({ lat: latitude, lng: longitude });
+    
+    // Create script element for Google Maps
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&callback=initMap`;
+    script.async = true;
+    script.defer = true;
+    
+    // Define the initialization function
+    window.initMap = () => {
+      try {
+        // Create map instance
+        map.current = new google.maps.Map(mapContainer.current!, {
+          center: { lat: coordinates.lat, lng: coordinates.lng },
+          zoom: 2,
+          mapTypeControl: true,
+          streetViewControl: false,
+          fullscreenControl: true,
+          zoomControl: true
+        });
+        
+        // Create marker
+        marker.current = new google.maps.Marker({
+          position: { lat: coordinates.lat, lng: coordinates.lng },
+          map: map.current,
+          draggable: true,
+          animation: google.maps.Animation.DROP
+        });
+        
+        // Add event listener for marker drag end
+        marker.current.addListener('dragend', () => {
+          if (marker.current) {
+            const position = marker.current.getPosition();
+            if (position) {
+              setCoordinates({ 
+                lat: position.lat(),
+                lng: position.lng()
+              });
+            }
           }
-          setLoading(false);
-        },
-        (error) => {
-          console.error("Error getting location:", error);
-          setLoading(false);
-          toast({
-            title: "Location Error",
-            description: "Could not access your location. Please enable location services.",
-            variant: "destructive"
-          });
-        },
-        { enableHighAccuracy: true }
-      );
-
-      return () => {
-        if (map.current) {
-          map.current.remove();
-        }
-      };
-    } catch (error) {
-      console.error("Map initialization error:", error);
-      setTokenError(true);
+        });
+        
+        // Add event listener for map click
+        map.current.addListener('click', (e: google.maps.MapMouseEvent) => {
+          const position = e.latLng;
+          if (position && marker.current) {
+            marker.current.setPosition(position);
+            setCoordinates({ 
+              lat: position.lat(),
+              lng: position.lng()
+            });
+          }
+        });
+        
+        // Get user's location
+        getCurrentLocation();
+      } catch (error) {
+        console.error("Map initialization error:", error);
+        setApiError(true);
+        setLoading(false);
+        toast({
+          title: "Map Error",
+          description: "Could not initialize Google Maps. Please check your API key.",
+          variant: "destructive"
+        });
+      }
+    };
+    
+    // Handle script load error
+    script.onerror = () => {
+      console.error("Google Maps script failed to load");
+      setApiError(true);
       setLoading(false);
       toast({
-        title: "Map Error",
-        description: "Could not initialize map. Please check your token.",
+        title: "API Error",
+        description: "Failed to load Google Maps. Please check your API key or try again later.",
         variant: "destructive"
       });
-    }
-  }, [mapboxToken, toast]);
-
+    };
+    
+    // Add script to document
+    document.head.appendChild(script);
+    
+    // Clean up
+    return () => {
+      document.head.removeChild(script);
+      // Remove the global function
+      delete window.initMap;
+    };
+  }, [googleMapsApiKey, toast]);
+  
   // Function to get current location
   const getCurrentLocation = () => {
     setLoading(true);
@@ -138,12 +124,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearTok
       (position) => {
         const { latitude, longitude } = position.coords;
         if (map.current && marker.current) {
-          map.current.flyTo({
-            center: [longitude, latitude],
-            zoom: 14,
-            essential: true
-          });
-          marker.current.setLngLat([longitude, latitude]);
+          map.current.setCenter({ lat: latitude, lng: longitude });
+          map.current.setZoom(14);
+          marker.current.setPosition({ lat: latitude, lng: longitude });
           setCoordinates({ lat: latitude, lng: longitude });
         }
         setLoading(false);
@@ -164,7 +147,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearTok
       { enableHighAccuracy: true }
     );
   };
-
+  
   // Copy coordinates to clipboard
   const copyCoordinates = () => {
     const coordString = `${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`;
@@ -185,32 +168,32 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearTok
       }
     );
   };
-
-  // Handle changing the token
-  const handleChangeToken = () => {
-    onClearToken();
+  
+  // Handle changing the API key
+  const handleChangeKey = () => {
+    onClearKey();
     toast({
-      title: "Token Removed",
-      description: "You can now enter a new Mapbox token"
+      title: "API Key Removed",
+      description: "You can now enter a new Google Maps API key"
     });
   };
-
-  if (tokenError) {
+  
+  if (apiError) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Card className="p-6 max-w-md">
           <div className="text-center space-y-4">
             <h2 className="text-xl font-bold">Map Loading Error</h2>
-            <p>There was a problem with your Mapbox token. It may be invalid or expired.</p>
-            <Button onClick={handleChangeToken}>
-              Try a Different Token
+            <p>There was a problem with your Google Maps API key. It may be invalid, expired, or restricted.</p>
+            <Button onClick={handleChangeKey}>
+              Try a Different API Key
             </Button>
           </div>
         </Card>
       </div>
     );
   }
-
+  
   return (
     <div className="relative w-full h-screen">
       <div ref={mapContainer} className="absolute inset-0" />
@@ -225,7 +208,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearTok
                 {loading ? "Finding location..." : `${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`}
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleChangeToken} title="Change token">
+            <Button variant="ghost" size="icon" onClick={handleChangeKey} title="Change API key">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -250,5 +233,12 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearTok
     </div>
   );
 };
+
+// Add this to allow using the Google Maps API
+declare global {
+  interface Window {
+    initMap: () => void;
+  }
+}
 
 export default LocationPicker;

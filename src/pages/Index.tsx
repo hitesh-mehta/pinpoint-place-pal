@@ -1,37 +1,40 @@
 
 import React, { useState, useEffect } from 'react';
 import LocationPicker from '../components/LocationPicker';
-import MapboxTokenInput from '../components/MapboxTokenInput';
+import GoogleMapsInput from '../components/GoogleMapsInput';
 import { Toaster } from "@/components/ui/toaster";
 
 const Index = () => {
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('');
 
-  // Load token from localStorage on component mount
+  // Load API key from localStorage on component mount
   useEffect(() => {
-    const savedToken = localStorage.getItem('mapboxToken');
-    if (savedToken) {
-      setMapboxToken(savedToken);
+    const savedKey = localStorage.getItem('googleMapsApiKey');
+    if (savedKey) {
+      setGoogleMapsApiKey(savedKey);
     }
   }, []);
 
-  const handleTokenSubmit = (token: string) => {
-    // Save token to localStorage
-    localStorage.setItem('mapboxToken', token);
-    setMapboxToken(token);
+  const handleKeySubmit = (key: string) => {
+    // Save key to localStorage
+    localStorage.setItem('googleMapsApiKey', key);
+    setGoogleMapsApiKey(key);
   };
 
-  const clearToken = () => {
-    localStorage.removeItem('mapboxToken');
-    setMapboxToken('');
+  const clearKey = () => {
+    localStorage.removeItem('googleMapsApiKey');
+    setGoogleMapsApiKey('');
   };
 
   return (
     <div className="h-screen w-full">
-      {mapboxToken ? (
-        <LocationPicker mapboxToken={mapboxToken} onClearToken={clearToken} />
+      {googleMapsApiKey ? (
+        <LocationPicker googleMapsApiKey={googleMapsApiKey} onClearKey={clearKey} />
       ) : (
-        <MapboxTokenInput onTokenSubmit={handleTokenSubmit} />
+        <GoogleMapsInput 
+          onKeySubmit={handleKeySubmit} 
+          defaultKey="AIzaSyBUVmHMM29WpdUuioba_LlO6bu5lAWRE2Y"
+        />
       )}
       <Toaster />
     </div>
