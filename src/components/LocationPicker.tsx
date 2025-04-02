@@ -4,11 +4,12 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { MapPin, Navigation, Copy, Locate } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { MapPin, Copy, Locate, LogOut } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface LocationPickerProps {
   mapboxToken: string;
+  onClearToken: () => void;
 }
 
 interface Coordinates {
@@ -16,88 +17,112 @@ interface Coordinates {
   lng: number;
 }
 
-const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken }) => {
+const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken, onClearToken }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
   const [coordinates, setCoordinates] = useState<Coordinates>({ lat: 0, lng: 0 });
   const [loading, setLoading] = useState<boolean>(true);
+  const [tokenError, setTokenError] = useState<boolean>(false);
   const { toast } = useToast();
 
   // Initialize map when component mounts
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    mapboxgl.accessToken = mapboxToken;
-    
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [coordinates.lng, coordinates.lat],
-      zoom: 2
-    });
+    try {
+      mapboxgl.accessToken = mapboxToken;
+      
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [coordinates.lng, coordinates.lat],
+        zoom: 2
+      });
 
-    // Add navigation controls
-    map.current.addControl(
-      new mapboxgl.NavigationControl(), 'top-right'
-    );
-
-    // Create a draggable marker
-    marker.current = new mapboxgl.Marker({
-      draggable: true,
-      color: '#3b82f6'
-    })
-      .setLngLat([coordinates.lng, coordinates.lat])
-      .addTo(map.current);
-
-    // Update coordinates when marker is dragged
-    marker.current.on('dragend', () => {
-      if (marker.current) {
-        const lngLat = marker.current.getLngLat();
-        setCoordinates({ lat: lngLat.lat, lng: lngLat.lng });
-      }
-    });
-
-    // Update marker position when clicking on map
-    map.current.on('click', (e) => {
-      if (marker.current) {
-        marker.current.setLngLat([e.lngLat.lng, e.lngLat.lat]);
-        setCoordinates({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-      }
-    });
-
-    // Get user's current location
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        if (map.current && marker.current) {
-          map.current.flyTo({
-            center: [longitude, latitude],
-            zoom: 14,
-            essential: true
+      map.current.on('error', (e) => {
+        console.error("Mapbox error:", e);
+        if (e.error && e.error.status === 401) {
+          setTokenError(true);
+          toast({
+            title: "Invalid Token",
+            description: "The Mapbox token is invalid or has expired",
+            variant: "destructive"
           });
-          marker.current.setLngLat([longitude, latitude]);
-          setCoordinates({ lat: latitude, lng: longitude });
         }
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error getting location:", error);
-        setLoading(false);
-        toast({
-          title: "Location Error",
-          description: "Could not access your location. Please enable location services.",
-          variant: "destructive"
-        });
-      },
-      { enableHighAccuracy: true }
-    );
+      });
 
-    return () => {
-      if (map.current) {
-        map.current.remove();
-      }
-    };
+      // Add navigation controls
+      map.current.addControl(
+        new mapboxgl.NavigationControl(), 'top-right'
+      );
+
+      // Create a draggable marker
+      marker.current = new mapboxgl.Marker({
+        draggable: true,
+        color: '#3b82f6'
+      })
+        .setLngLat([coordinates.lng, coordinates.lat])
+        .addTo(map.current);
+
+      // Update coordinates when marker is dragged
+      marker.current.on('dragend', () => {
+        if (marker.current) {
+          const lngLat = marker.current.getLngLat();
+          setCoordinates({ lat: lngLat.lat, lng: lngLat.lng });
+        }
+      });
+
+      // Update marker position when clicking on map
+      map.current.on('click', (e) => {
+        if (marker.current) {
+          marker.current.setLngLat([e.lngLat.lng, e.lngLat.lat]);
+          setCoordinates({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        }
+      });
+
+      // Get user's current location
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          if (map.current && marker.current) {
+            map.current.flyTo({
+              center: [longitude, latitude],
+              zoom: 14,
+              essential: true
+            });
+            marker.current.setLngLat([longitude, latitude]);
+            setCoordinates({ lat: latitude, lng: longitude });
+          }
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          setLoading(false);
+          toast({
+            title: "Location Error",
+            description: "Could not access your location. Please enable location services.",
+            variant: "destructive"
+          });
+        },
+        { enableHighAccuracy: true }
+      );
+
+      return () => {
+        if (map.current) {
+          map.current.remove();
+        }
+      };
+    } catch (error) {
+      console.error("Map initialization error:", error);
+      setTokenError(true);
+      setLoading(false);
+      toast({
+        title: "Map Error",
+        description: "Could not initialize map. Please check your token.",
+        variant: "destructive"
+      });
+    }
   }, [mapboxToken, toast]);
 
   // Function to get current location
@@ -155,6 +180,31 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken }) => {
     );
   };
 
+  // Handle changing the token
+  const handleChangeToken = () => {
+    onClearToken();
+    toast({
+      title: "Token Removed",
+      description: "You can now enter a new Mapbox token"
+    });
+  };
+
+  if (tokenError) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Card className="p-6 max-w-md">
+          <div className="text-center space-y-4">
+            <h2 className="text-xl font-bold">Map Loading Error</h2>
+            <p>There was a problem with your Mapbox token. It may be invalid or expired.</p>
+            <Button onClick={handleChangeToken}>
+              Try a Different Token
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-screen">
       <div ref={mapContainer} className="absolute inset-0" />
@@ -162,11 +212,16 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ mapboxToken }) => {
       {/* Control Panel */}
       <Card className="absolute bottom-4 left-1/2 transform -translate-x-1/2 p-4 bg-white/90 backdrop-blur-sm shadow-lg rounded-lg w-[90%] max-w-md">
         <div className="flex flex-col space-y-3">
-          <div className="flex items-center space-x-2">
-            <MapPin className="h-5 w-5 text-blue-500" />
-            <div className="text-sm font-medium overflow-hidden">
-              {loading ? "Finding location..." : `${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <MapPin className="h-5 w-5 text-blue-500" />
+              <div className="text-sm font-medium overflow-hidden">
+                {loading ? "Finding location..." : `${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`}
+              </div>
             </div>
+            <Button variant="ghost" size="icon" onClick={handleChangeToken} title="Change token">
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
           
           <div className="flex space-x-2">
