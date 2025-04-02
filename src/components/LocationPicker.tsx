@@ -15,6 +15,14 @@ interface Coordinates {
   lng: number;
 }
 
+// Declare the Google Maps initialization function
+declare global {
+  interface Window {
+    initMap: () => void;
+    google: typeof google;
+  }
+}
+
 const LocationPicker: React.FC<LocationPickerProps> = ({ googleMapsApiKey, onClearKey }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -233,12 +241,5 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ googleMapsApiKey, onCle
     </div>
   );
 };
-
-// Add this to allow using the Google Maps API
-declare global {
-  interface Window {
-    initMap: () => void;
-  }
-}
 
 export default LocationPicker;
